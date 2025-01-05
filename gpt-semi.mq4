@@ -13,7 +13,7 @@ input int ADX_Period = 14;
 input int Slippage = 3;
 input int BreakEvenPips = 20;
 input int TrailingStopPips = 15;
-input int MinSpread = 30;  // New spread filter to avoid bad market conditions
+input int MinSpread = 100;  // Disabled spread filter for testing
 
 // Indicator Buffers
 double upperBB, lowerBB;
@@ -76,12 +76,11 @@ bool IsTradingTime()
 void PlaceTrade(int orderType)
 {
     if (!IsTradingTime() || OrdersTotal() >= 2) return; // Trade only in active hours, limit max open trades to 2
-    if (MarketInfo(Symbol(), MODE_SPREAD) > MinSpread) return; // Avoid trading during high spreads
 
     double stopLoss, takeProfit;
     atrValue = iATR(Symbol(), PERIOD_CURRENT, ATR_Period, 0);
-    stopLoss = atrValue * 1.8;  // Adjusted SL from 2.0 → 1.8 ATR
-    takeProfit = atrValue * 2.7;  // Adjusted TP remains at 2.7 ATR
+    stopLoss = atrValue * 2.0;  // Lowered SL from 2.5 → 2.0 ATR
+    takeProfit = atrValue * 2.7;  // Adjusted TP from 2.5 → 2.7 ATR
     
     double lotSize = AdjustLotSize();
     
@@ -123,7 +122,7 @@ void OnTick()
     
     // Retrieve ADX Value (Stronger Filtering)
     adxValue = iADX(Symbol(), PERIOD_CURRENT, ADX_Period, PRICE_CLOSE, MODE_MAIN, 0);
-    bool strongTrend = adxValue > 28;  // Increased ADX threshold from 25 → 28
+    bool strongTrend = adxValue > 25;  // Increased ADX threshold from 20 → 25
 
     // Retrieve MACD Confirmation
     macdMain = iMACD(Symbol(), PERIOD_CURRENT, 12, 26, 9, PRICE_CLOSE, MODE_MAIN, 0);
