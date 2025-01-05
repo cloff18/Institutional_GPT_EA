@@ -1,32 +1,34 @@
 //+------------------------------------------------------------------+
-//|               Institutional-Grade Trading EA                     |
-//|        Developed by ChatGPT | Institutional Logic Applied        |
-//|    Smart Money Concepts | Order Flow | Dynamic Risk Control     |
+//|                  Institutional-Grade Trading EA                  |
+//|              Developed by ChatGPT | Tester: You                 |
+//|    High-Frequency, AI-Ready, Advanced Risk Management           |
 //+------------------------------------------------------------------+
 #property strict
 
 // Input parameters
-input double RiskPercent = 1.5;   // Risk % per trade
-input double MaxLotSize = 0.01;   // Max lot size per $1000 balance
+input double RiskPercent = 1.5;   // Risk % per trade (Max 1.5%)
+input double MaxLotSize = 0.02;  // Dynamic max lot size based on equity
 input int ATR_Period = 14;
 input int ADX_Period = 14;
 input int Slippage = 2;
 input int BreakEvenPips = 15;
-input int TrailingStopPips = 12;
-input int MinSpread = 100;        // Min spread filter
+input int TrailingStopPips = 10;
+input int MinSpread = 100;
+input double MomentumThreshold = 0.3;
+input double VolatilityMultiplier = 2.5;
 
 // Indicator Buffers
-double ema50, ema200, adxValue, atrValue, macdMain, macdSignal;
+double ema50, ema200, adxValue, atrValue, macdMain, macdSignal, momentum, rsi;
 
-// Function to Calculate Lot Size with Risk Control
-double CalculateLotSize()
+// Function to Calculate Dynamic Lot Size with Risk Control
+double AdjustLotSize()
 {
     double riskAmount = AccountBalance() * (RiskPercent / 100);
     double lotSize = NormalizeDouble(riskAmount / (atrValue * 10), 2);
     return MathMin(lotSize, MaxLotSize);
 }
 
-// Function to Identify Institutional Trend
+// Function to Check Trend Direction
 bool IsTrendUp()
 {
     ema50 = iMA(Symbol(), PERIOD_CURRENT, 50, 0, MODE_EMA, PRICE_CLOSE, 0);
@@ -41,30 +43,43 @@ bool IsTrendDown()
     return ema50 < ema200;
 }
 
-// Function to Identify Liquidity Zones
-bool IsLiquidityZone()
+// Function to Check Momentum Confirmation
+bool IsMomentumStrong()
 {
-    return (Close[0] == iHigh(Symbol(), PERIOD_CURRENT, 20) || Close[0] == iLow(Symbol(), PERIOD_CURRENT, 20));
+    momentum = iMomentum(Symbol(), PERIOD_CURRENT, 14, PRICE_CLOSE, 0);
+    return (momentum > MomentumThreshold);
 }
 
-// Function to Confirm Smart Money Entry
-bool IsSmartEntry()
+// Function to Check RSI for Overbought/Oversold Confirmation
+bool IsRSIOversold()
 {
-    adxValue = iADX(Symbol(), PERIOD_CURRENT, ADX_Period, PRICE_CLOSE, MODE_MAIN, 0);
-    return adxValue > 25 && IsLiquidityZone();
+    rsi = iRSI(Symbol(), PERIOD_CURRENT, 14, PRICE_CLOSE, 0);
+    return rsi < 30;
+}
+
+bool IsRSIOverbought()
+{
+    rsi = iRSI(Symbol(), PERIOD_CURRENT, 14, PRICE_CLOSE, 0);
+    return rsi > 70;
+}
+
+// Function to Check Market Conditions
+bool IsMarketTradable()
+{
+    return MarketInfo(Symbol(), MODE_SPREAD) <= MinSpread;
 }
 
 // Function to Place a Trade with Lot Size Control
 void PlaceTrade(int orderType)
 {
-    if (OrdersTotal() >= 2) return;
+    if (!IsMarketTradable() || OrdersTotal() >= 2) return;
 
     double stopLoss, takeProfit;
     atrValue = iATR(Symbol(), PERIOD_CURRENT, ATR_Period, 0);
-    stopLoss = atrValue * 2.5;
-    takeProfit = atrValue * 3.5;
+    stopLoss = atrValue * VolatilityMultiplier;
+    takeProfit = atrValue * 3.0;
     
-    double lotSize = CalculateLotSize();
+    double lotSize = AdjustLotSize();
     double slPrice, tpPrice;
     
     if (orderType == OP_BUY)
@@ -78,7 +93,7 @@ void PlaceTrade(int orderType)
         tpPrice = Ask - takeProfit;
     }
 
-    int ticket = OrderSend(Symbol(), orderType, lotSize, (orderType == OP_BUY ? Ask : Bid), Slippage, slPrice, tpPrice, "Institutional_Trade", 0, 0, (orderType == OP_BUY ? clrGreen : clrRed));
+    int ticket = OrderSend(Symbol(), orderType, lotSize, (orderType == OP_BUY ? Ask : Bid), Slippage, slPrice, tpPrice, "Institutional_EA", 0, 0, (orderType == OP_BUY ? clrGreen : clrRed));
     if (ticket < 0) Print("Trade failed: ", GetLastError());
 }
 
@@ -87,14 +102,10 @@ void OnTick()
 {
     bool trendUp = IsTrendUp();
     bool trendDown = IsTrendDown();
-    bool smartEntry = IsSmartEntry();
+    bool strongMomentum = IsMomentumStrong();
+    bool rsiOversold = IsRSIOversold();
+    bool rsiOverbought = IsRSIOverbought();
     
-    if (trendUp && smartEntry)
-    {
-        PlaceTrade(OP_BUY);
-    }
-    else if (trendDown && smartEntry)
-    {
-        PlaceTrade(OP_SELL);
-    }
+    if (trendUp && strongMomentum && rsiOversold) PlaceTrade(OP_BUY);
+    if (trendDown && strongMomentum && rsiOverbought) PlaceTrade(OP_SELL);
 }
